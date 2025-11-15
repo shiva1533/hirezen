@@ -1,0 +1,39 @@
+{
+  "name": "hirezen-backend",
+  "version": "1.0.0",
+  "description": "Backend server for HireZen HRMS platform",
+  "main": "email-server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node email-server.js",
+    "dev": "node --watch email-server.js",
+    "build": "echo 'No build step required for backend'",
+    "test": "echo 'Tests not implemented yet'",
+    "lint": "echo 'Linting not configured'"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "mongodb": "^6.3.0",
+    "resend": "^3.2.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/node": "^20.10.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "hrms",
+    "hr",
+    "recruitment",
+    "mongodb",
+    "express",
+    "api"
+  ],
+  "author": "HireZen Team",
+  "license": "MIT"
+}
