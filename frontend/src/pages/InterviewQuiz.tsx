@@ -36,6 +36,8 @@ const InterviewQuiz = () => {
   const [mcqScore, setMcqScore] = useState<number>(0);
   const [essayScore, setEssayScore] = useState<number>(0);
   const [analyzingEssays, setAnalyzingEssays] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(true);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   // Add LOVABLE_API_KEY check to prevent errors
   const LOVABLE_API_KEY = import.meta.env.VITE_LOVABLE_API_KEY;
@@ -57,7 +59,8 @@ const InterviewQuiz = () => {
   const [uploadedVideoFilename, setUploadedVideoFilename] = useState<string | null>(null);
 
   // Stable refs to prevent re-mounting and maintain streams
-  const webcamVideoRef = useRef<HTMLVideoElement>(null); // Webcam preview (small overlay)
+  const webcamVideoRef = useRef<HTMLVideoElement>(null); // Webcam preview (main area)
+  const screenVideoRef = useRef<HTMLVideoElement>(null); // Screen preview (small overlay)
   const webcamStreamRef = useRef<MediaStream | null>(null); // Webcam stream
   const screenStreamRef = useRef<MediaStream | null>(null); // Screen stream
   const combinedStreamRef = useRef<MediaStream | null>(null); // Combined screen + mic stream
@@ -109,26 +112,71 @@ const InterviewQuiz = () => {
     };
   }, [recordedVideoUrl]);
 
-  // Webcam preview setup - Stable ref that never resets
+  // Stream previews setup - Stable refs that never reset
   useEffect(() => {
+    // Set up webcam preview in main area
     if (hasPermissions && webcamStreamRef.current && webcamVideoRef.current) {
-      console.log('🎥 Setting up webcam preview...');
+      console.log('🎥 Setting up webcam preview in main area...');
+      console.log('📹 Webcam tracks:', webcamStreamRef.current.getVideoTracks().length);
 
       // Ensure tracks are enabled
-      webcamStreamRef.current.getVideoTracks().forEach(track => {
+      webcamStreamRef.current.getVideoTracks().forEach((track, index) => {
         track.enabled = true;
-        console.log('📹 Webcam track enabled:', track.label);
+        console.log(`📹 Webcam track ${index} enabled:`, track.label, 'readyState:', track.readyState);
       });
 
-      // Set webcam stream to video element (never changes)
+      // Set webcam stream to main video element
       webcamVideoRef.current.srcObject = webcamStreamRef.current;
+      console.log('📹 Webcam stream assigned to video element');
 
       // Start playing webcam preview
       webcamVideoRef.current.play().then(() => {
-        console.log('✅ Webcam preview started successfully');
+        console.log('✅ Webcam preview started successfully in main area');
         setCameraEnabled(true);
       }).catch(error => {
         console.warn('⚠️ Webcam autoplay blocked:', error);
+        // Try to play again after user interaction
+        const playWebcam = () => {
+          if (webcamVideoRef.current) {
+            webcamVideoRef.current.play().catch(e => console.warn('⚠️ Webcam play failed:', e));
+          }
+        };
+        document.addEventListener('click', playWebcam, { once: true });
+      }).finally(() => {
+        console.log('📹 Webcam setup attempt complete');
+      });
+    }
+
+    // Set up screen preview in small overlay
+    if (hasPermissions && screenStreamRef.current && screenVideoRef.current) {
+      console.log('🖥️ Setting up screen preview in overlay...');
+      console.log('🖥️ Screen tracks:', screenStreamRef.current.getVideoTracks().length);
+
+      // Ensure tracks are enabled
+      screenStreamRef.current.getVideoTracks().forEach((track, index) => {
+        track.enabled = true;
+        console.log(`🖥️ Screen track ${index} enabled:`, track.label, 'readyState:', track.readyState);
+      });
+
+      // Set screen stream to overlay video element
+      screenVideoRef.current.srcObject = screenStreamRef.current;
+      console.log('🖥️ Screen stream assigned to overlay video element');
+
+      // Start playing screen preview
+      screenVideoRef.current.play().then(() => {
+        console.log('✅ Screen preview started successfully in overlay');
+        setScreenEnabled(true);
+      }).catch(error => {
+        console.warn('⚠️ Screen autoplay blocked:', error);
+        // Try to play again after user interaction
+        const playScreen = () => {
+          if (screenVideoRef.current) {
+            screenVideoRef.current.play().catch(e => console.warn('⚠️ Screen play failed:', e));
+          }
+        };
+        document.addEventListener('click', playScreen, { once: true });
+      }).finally(() => {
+        console.log('🖥️ Screen setup attempt complete');
       });
     }
   }, [hasPermissions]);
@@ -799,42 +847,14 @@ const InterviewQuiz = () => {
       // Ensure final score is between 1-100
       const finalScoreBounded = Math.max(1, Math.min(100, combinedScore));
 
-      // Upload recorded video if available
+      // For now, skip video upload to Supabase as the bucket doesn't exist
+      // The video data will be stored in MongoDB via activity logs if needed
       let videoUrl = null;
-      console.log('🎬 Checking for recorded blob:', recordedBlob ? recordedBlob.size : 'none');
+      console.log('🎬 Video recording completed - data will be stored in MongoDB');
 
       if (recordedBlob && recordedBlob.size > 0) {
-        console.log('🎬 Starting video upload process...');
-        const fileName = `interview_${candidateId || 'public'}_${Date.now()}.webm`;
         console.log('🎬 Video blob size:', recordedBlob.size, 'bytes');
-        console.log('🎬 File name:', fileName);
-        console.log('🎬 MIME type used:', recordedBlob.type);
-
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('interview_recordings')
-          .upload(fileName, recordedBlob, {
-            cacheControl: '3600',
-            upsert: false
-          });
-
-        if (uploadError) {
-          console.error("❌ Video upload error:", uploadError);
-          videoUrl = null;
-        } else {
-          console.log('✅ Video upload successful:', uploadData);
-          const { data: { publicUrl } } = supabase.storage
-            .from('interview_recordings')
-            .getPublicUrl(fileName);
-          videoUrl = publicUrl;
-          console.log('✅ Video URL generated:', videoUrl);
-
-          toast({
-            title: "Video uploaded",
-            description: "Your interview recording has been saved.",
-          });
-        }
-      } else {
-        console.log('⚠️ No recorded video found');
+        console.log('🎬 Video will be stored in MongoDB activity logs collection');
       }
 
       // For public interviews (no candidate ID), still save to activity log with generic info
@@ -1225,6 +1245,188 @@ const InterviewQuiz = () => {
     }
   };
 
+  // Show instructions page first
+  if (showInstructions) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 py-12">
+        <div className="container mx-auto px-4 max-w-4xl">
+          <Card className="p-8">
+            <CardHeader className="text-center">
+              <CardTitle className="text-3xl">Interview Instructions</CardTitle>
+              <p className="text-muted-foreground mt-2">
+                Please read these instructions carefully before starting your interview
+              </p>
+            </CardHeader>
+
+            <CardContent className="space-y-6">
+              <div className="grid md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3">
+                    <div className="bg-primary/10 p-2 rounded-full">
+                      <Camera className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Camera & Microphone</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Ensure your camera and microphone are working properly. You will be recorded during the interview.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="bg-primary/10 p-2 rounded-full">
+                      <Monitor className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Screen Recording</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Your screen will be recorded along with your responses for evaluation purposes.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="bg-primary/10 p-2 rounded-full">
+                      <CheckCircle className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Assessment Structure</h3>
+                      <p className="text-sm text-muted-foreground">
+                        The interview consists of multiple choice questions followed by written responses that will be AI-evaluated.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+                    <h3 className="font-semibold text-amber-800 dark:text-amber-200 mb-2">⚠️ Important Requirements</h3>
+                    <ul className="text-sm text-amber-700 dark:text-amber-300 space-y-1">
+                      <li>• Stable internet connection required</li>
+                      <li>• Quiet environment recommended</li>
+                      <li>• No external help or notes allowed</li>
+                      <li>• Complete all questions to submit</li>
+                      <li>• Your responses will be automatically evaluated</li>
+                    </ul>
+                  </div>
+
+                  <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                    <h3 className="font-semibold text-blue-800 dark:text-blue-200 mb-2">📊 What Happens Next</h3>
+                    <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+                      <li>• Results will be available immediately</li>
+                      <li>• Detailed scoring breakdown provided</li>
+                      <li>• Interview data saved for HR review</li>
+                      <li>• Email notification sent upon completion</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t pt-6">
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    id="agree-terms"
+                    checked={agreedToTerms}
+                    onChange={(e) => setAgreedToTerms(e.target.checked)}
+                    className="mt-1"
+                  />
+                  <label htmlFor="agree-terms" className="text-sm">
+                    <strong>I understand and agree to the following:</strong>
+                    <ul className="mt-2 space-y-1 text-muted-foreground">
+                      <li>• I consent to video and audio recording during this interview</li>
+                      <li>• My responses will be evaluated by AI and HR personnel</li>
+                      <li>• I will complete the assessment honestly without external assistance</li>
+                      <li>• I understand that my performance will determine the next steps in the hiring process</li>
+                    </ul>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex gap-4 justify-end pt-4">
+                <Button variant="outline" onClick={() => navigate('/careers')}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={async () => {
+                    if (agreedToTerms) {
+                      // Request permissions automatically when starting interview
+                      try {
+                        console.log('🚀 Starting interview - requesting permissions automatically...');
+
+                        // Request screen capture first
+                        console.log('🖥️ Requesting screen capture...');
+                        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+                          video: {
+                            width: { ideal: 1920 },
+                            height: { ideal: 1080 },
+                            frameRate: { ideal: 30 }
+                          },
+                          audio: false
+                        });
+                        screenStreamRef.current = screenStream;
+                        setScreenEnabled(true);
+
+                        // Request webcam and microphone
+                        console.log('📹🎤 Requesting webcam and microphone...');
+                        const webcamStream = await navigator.mediaDevices.getUserMedia({
+                          video: {
+                            width: { ideal: 640 },
+                            height: { ideal: 480 },
+                            facingMode: "user"
+                          },
+                          audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                          }
+                        });
+                        webcamStreamRef.current = webcamStream;
+                        setCameraEnabled(true);
+                        setMicEnabled(true);
+
+                        // Combine streams for recording
+                        const screenVideoTrack = screenStream.getVideoTracks()[0];
+                        const micAudioTrack = webcamStream.getAudioTracks()[0];
+                        const combinedStream = new MediaStream([screenVideoTrack, micAudioTrack]);
+                        combinedStreamRef.current = combinedStream;
+
+                        setHasPermissions(true);
+                        setShowInstructions(false);
+
+                        // Start recording automatically
+                        setTimeout(() => {
+                          startRecording();
+                        }, 1000); // Small delay to ensure UI is ready
+
+                        toast({
+                          title: "Interview started",
+                          description: "Camera, microphone, and screen sharing are now active. Recording will begin automatically.",
+                        });
+
+                      } catch (error) {
+                        console.error('❌ Permission request failed:', error);
+                        toast({
+                          title: "Permission denied",
+                          description: "Please allow camera and screen sharing access to continue.",
+                          variant: "destructive",
+                        });
+                      }
+                    }
+                  }}
+                  disabled={!agreedToTerms}
+                  className="min-w-[120px]"
+                >
+                  Start Interview
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 flex items-center justify-center">
@@ -1522,34 +1724,37 @@ const InterviewQuiz = () => {
                   </div>
                 ) : (
                   <>
-                    {/* Main screen will be recorded - no preview shown */}
-                    <div className="flex items-center justify-center h-full bg-gray-900 text-white">
-                      <div className="text-center">
-                        <Monitor className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                        <p className="text-lg">Screen + Audio Recording Ready</p>
-                        <p className="text-sm opacity-75 mt-2">Your screen and microphone will be recorded</p>
+                    {/* Webcam Preview - Main area (large) */}
+                    {hasPermissions && cameraEnabled ? (
+                      <video
+                        ref={webcamVideoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover"
+                        style={{ backgroundColor: 'black' }}
+                      />
+                    ) : hasPermissions && screenEnabled ? (
+                      <video
+                        ref={screenVideoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover"
+                        style={{ backgroundColor: 'black' }}
+                      />
+                    ) : hasPermissions ? (
+                      <div className="flex items-center justify-center h-full bg-gray-900 text-white">
+                        <div className="text-center">
+                          <Monitor className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                          <p className="text-lg">Setting up camera and screen preview...</p>
+                          <p className="text-sm opacity-75 mt-2">Recording will combine both streams</p>
+                        </div>
                       </div>
-                    </div>
+                    ) : null}
 
-                    {/* Webcam Preview - Small overlay, stable ref, never resets */}
-                    {hasPermissions && (
-                      <div className="absolute top-4 right-4 w-32 h-24 bg-black rounded-lg overflow-hidden border-2 border-white">
-                        <video
-                          ref={webcamVideoRef} // Stable ref that never resets
-                          autoPlay
-                          muted
-                          playsInline
-                          className="w-full h-full object-cover"
-                          style={{ backgroundColor: 'black' }}
-                        />
-                        {!cameraEnabled && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/80">
-                            <VideoOff className="h-6 w-6 text-white opacity-75" />
-                          </div>
-                        )}
-                      </div>
-                    )}
 
+                    {/* Recording indicator */}
                     {isRecording && (
                       <div className="absolute top-4 left-4 flex items-center gap-2 bg-red-500 text-white px-3 py-1 rounded-full text-sm">
                         <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
