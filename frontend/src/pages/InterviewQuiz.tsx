@@ -1813,7 +1813,7 @@ const InterviewQuiz = () => {
                       <Button
                         onClick={togglePause}
                         variant="outline"
-                        className="flex-1"
+                        className="flex-1 hidden"
                       >
                         {isPaused ? <Play className="h-4 w-4 mr-2" /> : <Pause className="h-4 w-4 mr-2" />}
                         {isPaused ? 'Resume' : 'Pause'}
@@ -1821,7 +1821,7 @@ const InterviewQuiz = () => {
                       <Button
                         onClick={stopRecording}
                         variant="destructive"
-                        className="flex-1"
+                        className="flex-1 hidden"
                       >
                         <Square className="h-4 w-4 mr-2" />
                         Stop
