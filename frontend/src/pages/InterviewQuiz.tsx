@@ -488,18 +488,18 @@ const InterviewQuiz = () => {
           // Generate downloadable URL
           const videoUrl = URL.createObjectURL(blob);
           setRecordedVideoUrl(videoUrl);
-
+    
           console.log('✅ Recording saved - Blob size:', blob.size, 'bytes, MIME type:', blob.type);
           console.log('🔗 Video URL generated:', videoUrl);
-
+    
           // Validate blob is playable
           if (blob.size === 0) {
             console.error('❌ Recorded blob is empty!');
             setRecordingError("Recording failed - no data captured. Please try again.");
             return;
           }
-
-          // Auto-upload to server for analysis
+    
+          // Auto-upload to server for analysis (now using merged email-server.js)
           uploadVideoToServer();
 
           toast({
@@ -616,13 +616,15 @@ const InterviewQuiz = () => {
       formData.append('jobPosition', job?.position || 'Unknown Position');
 
       const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
-      const response = await fetch(`${apiBaseUrl}/api/upload`, {
+      const response = await fetch(`${apiBaseUrl}/upload-video`, {
         method: 'POST',
         body: formData,
       });
 
       if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('Upload failed response:', errorText);
+        throw new Error(`Upload failed: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const result = await response.json();
@@ -630,14 +632,14 @@ const InterviewQuiz = () => {
 
       // Store the filename and URL for preview
       const videoFilename = result.filename;
-      const previewUrl = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002'}/api/video/${videoFilename}`;
+      const previewUrl = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002'}/video/${result.fileId}`;
 
       setUploadedVideoFilename(videoFilename);
       setUploadedVideoUrl(previewUrl);
 
       toast({
         title: "Video uploaded",
-        description: `Video stored in MongoDB GridFS. Filename: ${videoFilename}`,
+        description: `Video stored in MongoDB GridFS. File ID: ${result.fileId}`,
       });
 
       return { filename: videoFilename, url: previewUrl };
@@ -1417,10 +1419,11 @@ const InterviewQuiz = () => {
                         setHasPermissions(true);
                         setShowInstructions(false);
 
-                        // Start recording automatically
-                        setTimeout(() => {
-                          startRecording();
-                        }, 1000); // Small delay to ensure UI is ready
+                        // Don't auto-start recording - let user start manually when ready
+                        toast({
+                          title: "Ready to record",
+                          description: "Click 'Start Recording' when you're ready to begin answering questions.",
+                        });
 
                         toast({
                           title: "Interview started",
@@ -2019,7 +2022,7 @@ const InterviewQuiz = () => {
                                 window.open(uploadedVideoUrl, '_blank');
                                 toast({
                                   title: "Video opened",
-                                  description: "MongoDB GridFS video opened in new tab.",
+                                  description: "Video opened in new tab.",
                                 });
                               }
                             }}
@@ -2027,7 +2030,7 @@ const InterviewQuiz = () => {
                             variant="outline"
                             disabled={!uploadedVideoUrl}
                           >
-                            View on GridFS
+                            View Video
                           </Button>
                         )}
                         <Button

@@ -1,15 +1,22 @@
 import express from 'express';
 import cors from 'cors';
 import { Resend } from 'resend';
-import { MongoClient } from 'mongodb';
+import { MongoClient, GridFSBucket, ObjectId } from 'mongodb';
+import multer from 'multer';
+import { GridFsStorage } from 'multer-gridfs-storage';
+import pkg from 'multer-gridfs-storage';
+const { GridFsStorage: GridFsStorageClass } = pkg;
+import path from 'path';
 
 const app = express();
 const PORT = process.env.PORT || 3002;
 
 // MongoDB connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017';
-const DB_NAME = 'hirezen';
+const DB_NAME = process.env.DB_NAME || 'hirezen';
 let mongoClient;
+let gfsBucket;
+let upload;
 
 // Middleware
 app.use(cors());
@@ -19,22 +26,49 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 // Initialize Resend
 const resend = new Resend(process.env.RESEND_API_KEY || 're_NZzC538G_L44QCHEyZmkmJBy7JMBqkypF');
 
-// Connect to MongoDB
+// Connect to MongoDB and initialize GridFS
 async function connectMongoDB() {
   try {
-    if (mongoClient) return mongoClient.db(DB_NAME);
+    if (mongoClient && gfsBucket) return mongoClient.db(DB_NAME);
 
     console.log('🔌 Connecting to MongoDB Atlas...');
     mongoClient = new MongoClient(MONGODB_URI);
     await mongoClient.connect();
+
+    const db = mongoClient.db(DB_NAME);
+
+    // Initialize GridFS bucket for videos
+    gfsBucket = new GridFSBucket(db, {
+      bucketName: 'videos'
+    });
+
+    // Initialize upload middleware
+    upload = multer({
+      storage: multer.memoryStorage(),
+      limits: {
+        fileSize: 500 * 1024 * 1024, // 500MB limit
+      },
+      fileFilter: (req, file, cb) => {
+        const allowedTypes = ['video/webm', 'video/mp4'];
+        if (allowedTypes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new Error('Only .webm and .mp4 video files are allowed'));
+        }
+      }
+    });
+
+    console.log('📋 Multer initialized for video uploads');
+
     console.log('✅ MongoDB Atlas connected successfully!');
+    console.log('🎬 GridFS bucket "videos" initialized');
     console.log('📊 Database: hirezen');
 
-    // Test the connection by listing collections
-    const collections = await mongoClient.db(DB_NAME).collections();
+    // Test collections
+    const collections = await db.collections();
     console.log(`📋 Available collections: ${collections.map(c => c.collectionName).join(', ')}`);
 
-    return mongoClient.db(DB_NAME);
+    return db;
   } catch (error) {
     console.error('❌ MongoDB Atlas connection error:', error.message);
     console.error('🔍 Connection string:', MONGODB_URI.replace(/:([^:@]{4})[^:@]*@/, ':$1****@')); // Hide password
@@ -364,6 +398,226 @@ app.get('/activity-logs/:id/video', async (req, res) => {
   }
 });
 
+// Video upload endpoint - Upload video file to GridFS
+app.post('/upload-video', (req, res, next) => {
+  if (!upload) {
+    console.log('❌ Upload middleware not initialized');
+    return res.status(500).json({ success: false, error: 'Upload service not ready' });
+  }
+  upload.single('video')(req, res, next);
+}, async (req, res) => {
+  try {
+    console.log('📥 Upload request received');
+    console.log('📄 Request body keys:', Object.keys(req.body));
+    console.log('📁 Files:', req.file ? 'present' : 'missing');
+
+    if (!req.file) {
+      console.log('❌ No file in request');
+      return res.status(400).json({
+        success: false,
+        error: 'No video file uploaded'
+      });
+    }
+
+    console.log('📥 Processing uploaded video file:', {
+      originalname: req.file.originalname,
+      size: req.file.size,
+      mimetype: req.file.mimetype,
+      buffer: req.file.buffer?.length || 'no buffer'
+    });
+
+    // Manually upload to GridFS since multer-gridfs-storage is problematic
+    try {
+      const filename = `${Date.now()}-interview-video${path.extname(req.file.originalname) || '.webm'}`;
+      const uploadStream = gfsBucket.openUploadStream(filename, {
+        metadata: {
+          originalName: req.file.originalname,
+          mimeType: req.file.mimetype,
+          uploadDate: new Date(),
+          size: req.file.size,
+          // Additional metadata from request body
+          candidateId: req.body.candidateId,
+          candidateName: req.body.candidateName,
+          candidateEmail: req.body.candidateEmail,
+          jobId: req.body.jobId,
+          jobPosition: req.body.jobPosition,
+          sessionId: req.body.sessionId
+        }
+      });
+
+      uploadStream.write(req.file.buffer);
+      uploadStream.end();
+
+      const fileId = await new Promise((resolve, reject) => {
+        uploadStream.on('finish', () => resolve(uploadStream.id));
+        uploadStream.on('error', reject);
+      });
+
+      console.log('✅ Video uploaded to GridFS with ID:', fileId);
+
+      // Verify the file was stored
+      const files = await gfsBucket.find({ _id: fileId }).toArray();
+      if (files.length === 0) {
+        console.error('❌ File not found in GridFS after upload!');
+        return res.status(500).json({
+          success: false,
+          error: 'File upload failed - not found in database'
+        });
+      }
+
+      console.log('✅ File verified in GridFS:', files[0]._id.toString());
+
+      res.json({
+        success: true,
+        fileId: fileId,
+        filename: filename,
+        size: req.file.size,
+        mimeType: req.file.mimetype,
+        message: 'Video uploaded successfully to GridFS'
+      });
+
+    } catch (gridfsError) {
+      console.error('❌ GridFS upload error:', gridfsError);
+      res.status(500).json({
+        success: false,
+        error: 'GridFS upload failed: ' + gridfsError.message
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Error uploading video:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Stream video from GridFS
+app.get('/video/:id', async (req, res) => {
+  try {
+    const fileId = req.params.id;
+
+    if (!ObjectId.isValid(fileId)) {
+      return res.status(400).json({ error: 'Invalid file ID' });
+    }
+
+    // Find file in GridFS
+    const files = await gfsBucket.find({ _id: new ObjectId(fileId) }).toArray();
+
+    if (!files || files.length === 0) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+
+    const file = files[0];
+
+    // Set appropriate headers
+    res.setHeader('Content-Type', file.metadata?.mimeType || 'video/webm');
+    res.setHeader('Content-Length', file.length);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+
+    // Handle range requests for video seeking
+    const range = req.headers.range;
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : file.length - 1;
+      const chunksize = (end - start) + 1;
+
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${file.length}`);
+      res.setHeader('Content-Length', chunksize);
+
+      // Stream specific range
+      const downloadStream = gfsBucket.openDownloadStream(file._id, {
+        start: start,
+        end: end + 1
+      });
+      downloadStream.pipe(res);
+    } else {
+      // Stream entire file
+      const downloadStream = gfsBucket.openDownloadStream(file._id);
+      downloadStream.pipe(res);
+    }
+
+  } catch (error) {
+    console.error('❌ Error streaming video:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Force download video from GridFS
+app.get('/video/download/:id', async (req, res) => {
+  try {
+    const fileId = req.params.id;
+
+    if (!ObjectId.isValid(fileId)) {
+      return res.status(400).json({ error: 'Invalid file ID' });
+    }
+
+    // Find file in GridFS
+    const files = await gfsBucket.find({ _id: new ObjectId(fileId) }).toArray();
+
+    if (!files || files.length === 0) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+
+    const file = files[0];
+    const filename = file.filename || `interview-video-${fileId}.webm`;
+
+    // Set headers for download
+    res.setHeader('Content-Type', file.metadata?.mimeType || 'video/webm');
+    res.setHeader('Content-Length', file.length);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    // Stream file for download
+    const downloadStream = gfsBucket.openDownloadStream(file._id);
+    downloadStream.pipe(res);
+
+  } catch (error) {
+    console.error('❌ Error downloading video:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// List all uploaded videos (for debugging/admin purposes)
+app.get('/videos', async (req, res) => {
+  try {
+    const files = await gfsBucket.find().sort({ uploadDate: -1 }).limit(50).toArray();
+
+    const videos = files.map(file => ({
+      id: file._id,
+      filename: file.filename,
+      size: file.length,
+      sizeMB: (file.length / (1024 * 1024)).toFixed(2),
+      uploadDate: file.uploadDate,
+      mimeType: file.metadata?.mimeType,
+      metadata: {
+        candidateId: file.metadata?.candidateId,
+        candidateName: file.metadata?.candidateName,
+        candidateEmail: file.metadata?.candidateEmail,
+        jobId: file.metadata?.jobId,
+        jobPosition: file.metadata?.jobPosition,
+        sessionId: file.metadata?.sessionId
+      }
+    }));
+
+    res.json({
+      success: true,
+      videos: videos,
+      count: videos.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error listing videos:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Email endpoint
 app.post('/send-email', async (req, res) => {
   try {
@@ -634,6 +888,7 @@ app.get('/health', async (req, res) => {
       message: 'HireZen Backend Server (MongoDB Atlas)',
       mode: 'production',
       database: dbStatus,
+      gridfs: gfsBucket ? 'initialized' : 'not initialized',
       collections: collections.map(c => c.collectionName),
       mongodb_uri: MONGODB_URI ? 'configured' : 'missing',
       timestamp: new Date().toISOString()
@@ -673,7 +928,13 @@ async function initializeServer() {
     console.log(`✉️  Email service: Ready`);
     console.log(`📝 Interview results storage: Ready`);
     console.log(`📋 Activity logs: Ready`);
-    console.log(`🌐 Frontend expected at: http://localhost:8080`);
+    console.log(`🎬 Video server: GridFS enabled`);
+    console.log(`📤 Upload: POST /upload-video`);
+    console.log(`🎥 Stream: GET /video/:id`);
+    console.log(`⬇️ Download: GET /video/download/:id`);
+    console.log(`📋 Videos list: GET /videos`);
+    console.log('✅ GridFS upload initialized:', !!upload);
+    console.log(` Frontend expected at: http://localhost:8080`);
   });
 }
 

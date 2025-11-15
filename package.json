@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "multer-gridfs-storage": "^5.0.2",
     "react-leaflet": "^4.2.1"
   }
 }
