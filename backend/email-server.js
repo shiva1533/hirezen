@@ -19,7 +19,22 @@ let gfsBucket;
 let upload;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: [
+    'https://hirezen-dv1h.vercel.app',  // Vercel frontend
+    'https://hirezen-u5gy.onrender.com', // Render backend (for self)
+    'http://localhost:5173',            // Local Vite dev
+    'http://localhost:5174',            // Alternative local port
+    'http://localhost:3000',            // Alternative local port
+    'http://localhost:8080'             // Alternative local port
+  ],
+  credentials: false,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Handle preflight OPTIONS requests
+app.options('*', cors());
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
