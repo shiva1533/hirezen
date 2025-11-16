@@ -418,6 +418,101 @@ app.get('/activity-logs/:id/video', async (req, res) => {
   }
 });
 
+// Interview videos endpoints - dedicated collection for perfect matching
+app.post('/interview-videos', async (req, res) => {
+  try {
+    const db = await connectMongoDB();
+    if (!db) {
+      return res.status(500).json({ success: false, error: 'Database connection failed' });
+    }
+
+    const collection = db.collection('interview_videos');
+    const videoData = {
+      ...req.body,
+      created_at: new Date(),
+      id: Date.now().toString(),
+      processing_status: 'completed'
+    };
+
+    const result = await collection.insertOne(videoData);
+    console.log('✅ Interview video metadata saved:', result.insertedId);
+
+    res.json({
+      success: true,
+      id: result.insertedId,
+      data: videoData
+    });
+
+  } catch (error) {
+    console.error('❌ Error saving interview video metadata:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/interview-videos', async (req, res) => {
+  try {
+    const db = await connectMongoDB();
+    if (!db) {
+      return res.status(500).json({ success: false, error: 'Database connection failed' });
+    }
+
+    const collection = db.collection('interview_videos');
+
+    // Build filter
+    const filter = {};
+    if (req.query.interview_id) filter.interview_id = req.query.interview_id;
+    if (req.query.candidate_id) filter.candidate_id = req.query.candidate_id;
+    if (req.query.session_id) filter.session_id = req.query.session_id;
+    if (req.query.gridfs_file_id) filter.gridfs_file_id = req.query.gridfs_file_id;
+
+    const videos = await collection
+      .find(filter)
+      .sort({ created_at: -1 })
+      .limit(100)
+      .toArray();
+
+    res.json({
+      success: true,
+      data: videos,
+      count: videos.length
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching interview videos:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/interview-videos/:id', async (req, res) => {
+  try {
+    const db = await connectMongoDB();
+    if (!db) {
+      return res.status(500).json({ success: false, error: 'Database connection failed' });
+    }
+
+    const collection = db.collection('interview_videos');
+    const video = await collection.findOne({
+      $or: [
+        { id: req.params.id },
+        { _id: req.params.id }
+      ]
+    });
+
+    if (!video) {
+      return res.status(404).json({ success: false, error: 'Interview video not found' });
+    }
+
+    res.json({
+      success: true,
+      data: video
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching interview video:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Attach video metadata to existing activity log
 app.post('/activity-logs/:id/attach-video', async (req, res) => {
   try {

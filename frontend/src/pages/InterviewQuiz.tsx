@@ -883,6 +883,51 @@ const InterviewQuiz = () => {
           videoUploadResult = await uploadVideoToServer();
           videoUrl = videoUploadResult?.url || null; // Get the URL from upload result
           console.log('✅ Video uploaded, URL:', videoUrl);
+
+          // Store video metadata in dedicated interview_videos collection
+          if (videoUploadResult && candidateId) {
+            const videoMetadata = {
+              interview_id: candidateId,
+              candidate_id: candidateId,
+              session_id: sessionId,
+              gridfs_file_id: videoUploadResult.fileId,
+              filename: videoUploadResult.filename,
+              mime_type: videoUploadResult.mimeType,
+              size_bytes: videoUploadResult.size,
+              size_mb: (videoUploadResult.size / 1024 / 1024).toFixed(2),
+              video_url: videoUrl,
+              upload_date: new Date().toISOString(),
+              duration_seconds: recordingTime,
+              metadata: {
+                candidate_name: 'Interview Candidate', // Will be updated when candidate data is available
+                candidate_email: 'candidate@example.com', // Will be updated when candidate data is available
+                job_position: job?.position || 'Unknown Position',
+                interview_type: 'written_quiz'
+              },
+              processing_status: 'completed',
+              compression_info: {
+                original_size: recordedBlob.size,
+                processed_size: videoUploadResult.size,
+                codec: 'vp9+opus'
+              }
+            };
+
+            const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
+            const videoResponse = await fetch(`${apiBaseUrl}/interview-videos`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(videoMetadata),
+            });
+
+            if (videoResponse.ok) {
+              const videoResult = await videoResponse.json();
+              console.log('✅ Video metadata saved to interview_videos collection:', videoResult.id);
+            } else {
+              console.warn('⚠️ Failed to save video metadata to interview_videos collection');
+            }
+          }
         } catch (uploadError) {
           console.error('❌ Video upload failed:', uploadError);
           // Continue with submission even if upload fails
@@ -906,10 +951,7 @@ const InterviewQuiz = () => {
             .select(`
               id,
               full_name,
-              email,
-              jobs!inner (
-                position
-              )
+              email
             `)
             .eq('id', candidateId)
             .single();
@@ -929,9 +971,7 @@ const InterviewQuiz = () => {
               .select(`
                 *,
                 resumes (*),
-                applied_jobs (*),
-                jobs (*),
-                profiles (*)
+                applied_jobs (*)
               `)
               .eq('id', candidateId)
               .single();
@@ -988,8 +1028,6 @@ const InterviewQuiz = () => {
                 // Related data
                 resumes: profileData.resumes || [],
                 applied_jobs: profileData.applied_jobs || [],
-                jobs: profileData.jobs || [],
-                profiles: profileData.profiles || [],
 
                 // Interview context
                 interview_link_used: window.location.href,
@@ -1171,16 +1209,19 @@ const InterviewQuiz = () => {
           created_at: new Date().toISOString(),
           interview_score: finalScoreBounded,
           video_url: videoUrl,
-          // Include video blob data for storage in MongoDB activity_logs collection
-          video_blob: recordedBlob ? await recordedBlob.arrayBuffer() : null,
-          video_mime_type: recordedBlob ? recordedBlob.type : null,
-          video_size_mb: recordedBlob ? (recordedBlob.size / 1024 / 1024).toFixed(2) : null,
+          // Include video metadata from GridFS upload for public interviews
+          video_file_id: videoUploadResult?.fileId || null,
+          video_filename: videoUploadResult?.filename || null,
+          video_mime_type: videoUploadResult?.mimeType || null,
+          video_size_bytes: videoUploadResult?.size || null,
+          video_size_mb: videoUploadResult?.size ? (videoUploadResult.size / 1024 / 1024).toFixed(2) : null,
+          // Video is already stored in GridFS, no need for blob in activity log
           interview_details: {
             mcq_score: mcqPercentage,
             essay_score: essayPercentage,
             total_questions: mcqQuestions.length + essayQuestions.length,
             video_recorded: !!videoUrl,
-            video_stored_in_db: !!recordedBlob,
+            video_stored_in_gridfs: !!videoUploadResult,
             passed: finalScoreBounded >= 50
           }
         };
