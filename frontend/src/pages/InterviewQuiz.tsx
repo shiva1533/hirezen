@@ -632,10 +632,31 @@ const InterviewQuiz = () => {
 
       // Store the filename and URL for preview
       const videoFilename = result.filename;
-      const previewUrl = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002'}/video/${result.fileId}`;
+      const previewUrl = result.fileUrl; // Use the returned fileUrl instead of constructing it
 
       setUploadedVideoFilename(videoFilename);
       setUploadedVideoUrl(previewUrl);
+
+      // Update activity log with video metadata
+      const activityLogId = sessionId; // Use sessionId as activity log ID
+      const attachResponse = await fetch(`${apiBaseUrl}/activity-logs/${activityLogId}/attach-video`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileId: result.fileId,
+          fileUrl: previewUrl,
+          mimeType: result.mimeType,
+          size: result.size
+        }),
+      });
+
+      if (attachResponse.ok) {
+        console.log('✅ Video metadata attached to activity log');
+      } else {
+        console.warn('⚠️ Failed to attach video metadata to activity log');
+      }
 
       toast({
         title: "Video uploaded",

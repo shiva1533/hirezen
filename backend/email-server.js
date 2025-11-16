@@ -18,22 +18,29 @@ let mongoClient;
 let gfsBucket;
 let upload;
 
-// Middleware
+// CORS Configuration - Allow specific origins
+const allowedOrigins = [
+  'https://hirezen-dv1h.vercel.app', // Production frontend
+  'https://hirezen-dv1h.vercel.app/',
+  'http://localhost:5173',            // Local dev
+  'http://localhost:5179',
+  'http://localhost:3000'
+];
+
 app.use(cors({
-  origin: [
-    'https://hirezen-dv1h.vercel.app',  // Vercel frontend
-    'https://hirezen-u5gy.onrender.com', // Render backend (for self)
-    'http://localhost:5173',            // Local Vite dev
-    'http://localhost:5174',            // Alternative local port
-    'http://localhost:3000',            // Alternative local port
-    'http://localhost:8080'             // Alternative local port
-  ],
-  credentials: false,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like curl or same-origin)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'apikey', 'Accept', 'X-Requested-With'],
+  credentials: true,
+  maxAge: 86400
 }));
 
-// Handle preflight OPTIONS requests
+// Allow preflight for all routes
 app.options('*', cors());
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
@@ -413,6 +420,43 @@ app.get('/activity-logs/:id/video', async (req, res) => {
   }
 });
 
+// Attach video metadata to existing activity log
+app.post('/activity-logs/:id/attach-video', async (req, res) => {
+  try {
+    const { fileId, fileUrl, mimeType, size } = req.body;
+    const id = req.params.id;
+    const db = await connectMongoDB();
+    if (!db) {
+      return res.status(500).json({ success: false, error: 'Database connection failed' });
+    }
+
+    const collection = db.collection('activity_logs');
+    const update = {
+      $set: {
+        video_file_id: fileId,
+        video_url: fileUrl,
+        video_mime_type: mimeType,
+        video_size_bytes: size,
+        video_recorded: true,
+        video_stored_in_db: true,
+        updated_at: new Date()
+      }
+    };
+
+    const result = await collection.updateOne({ id }, update);
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ success: false, error: 'Activity log not found' });
+    }
+
+    res.json({ success: true, message: 'Video metadata attached to activity log' });
+
+  } catch (error) {
+    console.error('Error attaching video to activity log:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Video upload endpoint - Upload video file to GridFS
 app.post('/upload-video', (req, res, next) => {
   if (!upload) {
@@ -482,12 +526,15 @@ app.post('/upload-video', (req, res, next) => {
 
       console.log('✅ File verified in GridFS:', files[0]._id.toString());
 
+      const backendBaseUrl = process.env.BACKEND_BASE_URL || 'https://hirezen-u5gy.onrender.com';
+
       res.json({
         success: true,
         fileId: fileId,
         filename: filename,
         size: req.file.size,
         mimeType: req.file.mimetype,
+        fileUrl: `${backendBaseUrl}/video/${fileId}`,
         message: 'Video uploaded successfully to GridFS'
       });
 
