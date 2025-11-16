@@ -1425,11 +1425,6 @@ const InterviewQuiz = () => {
                           description: "Click 'Start Recording' when you're ready to begin answering questions.",
                         });
 
-                        toast({
-                          title: "Interview started",
-                          description: "Camera, microphone, and screen sharing are now active. Recording will begin automatically.",
-                        });
-
                       } catch (error) {
                         console.error('❌ Permission request failed:', error);
                         toast({
