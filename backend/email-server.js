@@ -69,11 +69,11 @@ async function connectMongoDB() {
         fileSize: 500 * 1024 * 1024, // 500MB limit
       },
       fileFilter: (req, file, cb) => {
-        const allowedTypes = ['video/webm', 'video/mp4'];
-        if (allowedTypes.includes(file.mimetype)) {
+        const allowedTypes = ['video/webm', 'video/mp4', 'video/x-matroska', 'video/avi', 'video/quicktime'];
+        if (allowedTypes.includes(file.mimetype) || file.originalname.match(/\.(webm|mp4|mkv|avi|mov)$/i)) {
           cb(null, true);
         } else {
-          cb(new Error('Only .webm and .mp4 video files are allowed'));
+          cb(new Error(`File type ${file.mimetype} not allowed. Only video files (.webm, .mp4, .mkv, .avi, .mov) are accepted.`));
         }
       }
     });
