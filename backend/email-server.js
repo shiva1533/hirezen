@@ -22,9 +22,10 @@ let upload;
 const allowedOrigins = [
   'https://hirezen-dv1h.vercel.app', // Production frontend
   'https://hirezen-dv1h.vercel.app/',
-  'http://localhost:5173',            // Local dev
-  'http://localhost:5179',
-  'http://localhost:3000'
+  'http://localhost:5173',            // Local Vite dev (current)
+  'http://localhost:5179',            // Alternative local port
+  'http://localhost:3000',            // Alternative local port
+  'http://localhost:8080'             // Alternative local port
 ];
 
 app.use(cors({
