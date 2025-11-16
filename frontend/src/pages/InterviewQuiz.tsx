@@ -893,9 +893,19 @@ const InterviewQuiz = () => {
       // Ensure final score is between 1-100
       const finalScoreBounded = Math.max(1, Math.min(100, combinedScore));
 
-      // For now, skip video upload to Supabase as the bucket doesn't exist
-      // The video data will be stored in MongoDB via activity logs if needed
+      // Upload video to GridFS and get real URL
       let videoUrl = null;
+      if (recordedBlob && recordedBlob.size > 0) {
+        try {
+          console.log('🎬 Uploading video to GridFS...');
+          await uploadVideoToServer();
+          videoUrl = uploadedVideoUrl; // This will be set by uploadVideoToServer
+          console.log('✅ Video uploaded, URL:', videoUrl);
+        } catch (uploadError) {
+          console.error('❌ Video upload failed:', uploadError);
+          // Continue with submission even if upload fails
+        }
+      }
       console.log('🎬 Video recording completed - data will be stored in MongoDB');
 
       if (recordedBlob && recordedBlob.size > 0) {
