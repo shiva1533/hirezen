@@ -2,7 +2,7 @@
   "name": "hirezen-backend",
   "version": "1.0.0",
   "description": "HireZen Backend with MongoDB GridFS video storage",
-  "main": "server.js",
+  "main": "email-server.js",
   "type": "module",
   "scripts": {
     "start": "node server.js",
