@@ -3,9 +3,6 @@ import cors from 'cors';
 import { Resend } from 'resend';
 import { MongoClient, GridFSBucket, ObjectId } from 'mongodb';
 import multer from 'multer';
-import { GridFsStorage } from 'multer-gridfs-storage';
-import pkg from 'multer-gridfs-storage';
-const { GridFsStorage: GridFsStorageClass } = pkg;
 import path from 'path';
 
 const app = express();
