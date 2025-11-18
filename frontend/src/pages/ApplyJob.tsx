@@ -337,6 +337,37 @@ const ApplyJob = () => {
 
       console.log('✅ Resume parsing completed, candidate data:', candidateData);
 
+      // Store application in MongoDB for profile tracking
+      console.log('💾 Storing application in MongoDB...');
+      try {
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
+        const applicationResponse = await fetch(`${apiBaseUrl}/candidate-applications`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: extractedEmail,
+            fullName: extractedName,
+            phone: extractedPhone,
+            resumeUrl: publicUrl,
+            jobId: jobId,
+            position: job?.position || 'Unknown Position',
+            department: job?.department || 'General',
+            closingDate: job?.closing_date
+          }),
+        });
+
+        if (!applicationResponse.ok) {
+          console.warn('⚠️ Failed to store application in MongoDB:', await applicationResponse.text());
+        } else {
+          const appData = await applicationResponse.json();
+          console.log('✅ Application stored in MongoDB:', appData);
+        }
+      } catch (mongoError) {
+        console.warn('⚠️ MongoDB storage failed, continuing with application:', mongoError);
+      }
+
       // Send confirmation email via local Node.js server
       console.log('📧 Starting email sending process...');
       console.log('📧 Email recipient:', email);
