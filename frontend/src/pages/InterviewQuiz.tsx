@@ -1463,10 +1463,15 @@ const InterviewQuiz = () => {
                         setHasPermissions(true);
                         setShowInstructions(false);
 
-                        // Don't auto-start recording - let user start manually when ready
+                        // Auto-start recording after permissions are granted
+                        console.log('🔄 Auto-starting recording after permissions granted...');
+                        setTimeout(() => {
+                          startRecording();
+                        }, 1000); // Small delay to ensure UI updates
+
                         toast({
-                          title: "Ready to record",
-                          description: "Click 'Start Recording' when you're ready to begin answering questions.",
+                          title: "Recording started automatically",
+                          description: "Screen and audio recording has begun. Answer the questions and click 'Submit Interview' when done.",
                         });
 
                       } catch (error) {
@@ -1996,14 +2001,15 @@ const InterviewQuiz = () => {
                       className="flex-1 bg-red-500 hover:bg-red-600"
                     >
                       <Play className="h-4 w-4 mr-2" />
-                      Start Recording
+                      {hasPermissions ? 'Start Recording' : 'Waiting for Permissions...'}
                     </Button>
                   ) : (
                     <>
                       <Button
                         onClick={togglePause}
                         variant="outline"
-                        className="flex-1 hidden"
+                        className="flex-1"
+                        disabled={!isRecording}
                       >
                         {isPaused ? <Play className="h-4 w-4 mr-2" /> : <Pause className="h-4 w-4 mr-2" />}
                         {isPaused ? 'Resume' : 'Pause'}
@@ -2011,10 +2017,11 @@ const InterviewQuiz = () => {
                       <Button
                         onClick={stopRecording}
                         variant="destructive"
-                        className="flex-1 hidden"
+                        className="flex-1"
+                        disabled={!isRecording}
                       >
                         <Square className="h-4 w-4 mr-2" />
-                        Stop
+                        Stop Recording
                       </Button>
                     </>
                   )}
