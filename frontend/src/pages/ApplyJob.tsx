@@ -1089,6 +1089,7 @@ const ApplyJob = () => {
                 )}
               </div>
               </form>
+            </div>
           </CardContent>
         </Card>
       </div>
