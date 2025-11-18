@@ -1993,47 +1993,15 @@ const InterviewQuiz = () => {
                   </Button>
                 </div>
 
-                <div className="flex gap-2">
-                  {!isRecording ? (
-                    <Button
-                      onClick={startRecording}
-                      disabled={!hasPermissions}
-                      className="flex-1 bg-red-500 hover:bg-red-600"
-                    >
-                      <Play className="h-4 w-4 mr-2" />
-                      {hasPermissions ? 'Start Recording' : 'Waiting for Permissions...'}
-                    </Button>
-                  ) : (
-                    <>
-                      <Button
-                        onClick={togglePause}
-                        variant="outline"
-                        className="flex-1"
-                        disabled={!isRecording}
-                      >
-                        {isPaused ? <Play className="h-4 w-4 mr-2" /> : <Pause className="h-4 w-4 mr-2" />}
-                        {isPaused ? 'Resume' : 'Pause'}
-                      </Button>
-                      <Button
-                        onClick={stopRecording}
-                        variant="destructive"
-                        className="flex-1"
-                        disabled={!isRecording}
-                      >
-                        <Square className="h-4 w-4 mr-2" />
-                        Stop Recording
-                      </Button>
-                    </>
-                  )}
-                </div>
+                {/* Recording controls removed - recording starts automatically */}
 
-                {/* Recording Timer Display */}
+                {/* Recording Status Display */}
                 <div className="text-center">
                   <div className="text-lg font-mono font-semibold text-primary">
                     {formatTime(recordingTime)}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {isRecording ? (isPaused ? 'Paused' : 'Recording') : 'Ready to record'}
+                    {isRecording ? (isPaused ? 'Recording Paused' : 'Recording Active') : 'Setting up recording...'}
                   </div>
                 </div>
 
@@ -2059,34 +2027,6 @@ const InterviewQuiz = () => {
                             ✓ Uploaded to MongoDB GridFS
                           </p>
                         )}
-                      </div>
-                      <div className="flex gap-2">
-                        {sessionId && (
-                          <Button
-                            onClick={() => {
-                              if (uploadedVideoUrl) {
-                                window.open(uploadedVideoUrl, '_blank');
-                                toast({
-                                  title: "Video opened",
-                                  description: "Video opened in new tab.",
-                                });
-                              }
-                            }}
-                            size="sm"
-                            variant="outline"
-                            disabled={!uploadedVideoUrl}
-                          >
-                            View Video
-                          </Button>
-                        )}
-                        <Button
-                          onClick={downloadRecording}
-                          size="sm"
-                          variant="outline"
-                        >
-                          <Download className="h-4 w-4 mr-2" />
-                          Download
-                        </Button>
                       </div>
                     </div>
                   </div>

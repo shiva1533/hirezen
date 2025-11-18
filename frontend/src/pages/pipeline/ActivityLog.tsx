@@ -1,12 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, ArrowRight, Briefcase, Clock, User, Search, Mail, Trophy, Video } from "lucide-react";
+import { Loader2, ArrowRight, Briefcase, Clock, User, Search, Mail, Trophy, Video, RefreshCw } from "lucide-react";
 import TopNavBar from "@/components/layout/TopNavBar";
 import Sidebar from "@/components/layout/Sidebar";
 import { formatDistanceToNow } from "date-fns";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
 
 interface ActivityLog {
   id: string;
@@ -34,6 +35,7 @@ const ActivityLog = () => {
   // Enhanced filtering state
   const [emailFilter, setEmailFilter] = useState("");
   const [stageFilter, setStageFilter] = useState("");
+  const queryClient = useQueryClient();
 
   // Activity logs from MongoDB (primary data source for pipeline changes)
   const { data: activityLogs, isLoading: activityLogsLoading, refetch: refetchActivityLogs } = useQuery({
@@ -183,6 +185,17 @@ const ActivityLog = () => {
                         <option value="failed">Interview Failed</option>
                       </select>
                     </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        queryClient.invalidateQueries({ queryKey: ["activity-logs-mongodb"] });
+                      }}
+                      className="flex items-center gap-2"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Refresh
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
