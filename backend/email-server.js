@@ -19,6 +19,8 @@ let upload;
 const allowedOrigins = [
   'https://hirezen-dv1h.vercel.app', // Production frontend
   'https://hirezen-dv1h.vercel.app/',
+  'https://hirezen-dv1h-9i1nw7gw4-shiva1533s-projects.vercel.app', // Current Vercel deployment
+  'https://hirezen-dv1h-9i1nw7gw4-shiva1533s-projects.vercel.app/',
   'http://localhost:5173',            // Local Vite dev (current)
   'http://localhost:5179',            // Alternative local port
   'http://localhost:3000',            // Alternative local port
