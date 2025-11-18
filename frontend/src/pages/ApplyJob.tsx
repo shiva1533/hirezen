@@ -158,46 +158,62 @@ const ApplyJob = () => {
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!resumeFile) {
-      toast({
-        title: "Resume required",
-        description: "Please upload your resume to continue.",
-        variant: "destructive",
-      });
-      return;
-    }
+   e.preventDefault();
 
-    setIsSubmitting(true);
+   if (!resumeFile) {
+     console.log('🚫 Resume validation failed: No resume file uploaded');
+     toast({
+       title: "Resume required",
+       description: "Please upload your resume to continue.",
+       variant: "destructive",
+     });
+     return;
+   }
+
+   console.log('✅ Resume validation passed');
+   setIsSubmitting(true);
 
     try {
       // Extract text from PDF client-side (skip for Word docs)
       let resumeText = '';
-      
+
+      console.log('📄 Starting PDF text extraction...');
+      console.log('📄 File type:', resumeFile.type);
+      console.log('📄 File name:', resumeFile.name);
+      console.log('📄 File size:', resumeFile.size, 'bytes');
+
       if (resumeFile.type === 'application/pdf' || resumeFile.name.toLowerCase().endsWith('.pdf')) {
+        console.log('📄 Processing PDF file...');
         try {
           const arrayBuffer = await resumeFile.arrayBuffer();
-          
+          console.log('📄 Array buffer created, size:', arrayBuffer.byteLength);
+
           // Configure worker for local pdfjs-dist
           pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+          console.log('📄 PDF.js worker configured');
 
           const loadingTask = pdfjsLib.getDocument({
             data: new Uint8Array(arrayBuffer),
           });
           const pdf = await loadingTask.promise;
+          console.log('📄 PDF loaded successfully, pages:', pdf.numPages);
 
           let text = '';
           for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            console.log(`📄 Extracting text from page ${pageNum}...`);
             const page = await pdf.getPage(pageNum);
             const textContent = await page.getTextContent();
-            text += (textContent.items as any[])
+            const pageText = (textContent.items as any[])
               .map((i: any) => i?.str ?? '')
               .join(' ');
+            text += pageText;
+            console.log(`📄 Page ${pageNum} extracted, length: ${pageText.length}`);
           }
           resumeText = text.trim();
-          
+          console.log('📄 Total extracted text length:', resumeText.length);
+
           if (resumeText.length < 100) {
+            console.log('🚫 Text extraction failed: Text too short (< 100 characters)');
             toast({
               title: "Invalid Resume",
               description: "This appears to be a scanned PDF with no text. Please use an OCR tool to convert it first.",
@@ -206,17 +222,65 @@ const ApplyJob = () => {
             setIsSubmitting(false);
             return;
           }
+          console.log('✅ PDF text extraction completed successfully');
         } catch (error) {
-          console.error('PDF parsing error:', error);
+          console.error('❌ PDF parsing error:', error);
           throw new Error('Failed to parse PDF. Please try again.');
         }
       } else {
         // For Word docs, we'll send to backend for processing
+        console.log('📄 Word document detected - will be processed on server');
         resumeText = 'Word document - will be processed on server';
       }
 
+      console.log('📧 Starting email extraction from resume text...');
+      // Extract email address from resume text
+      const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
+      const emailMatches = resumeText.match(emailRegex);
+      const extractedEmail = emailMatches ? emailMatches[0] : null;
+      console.log('📧 Email extraction result:', extractedEmail ? 'Found: ' + extractedEmail : 'Not found');
+
+      if (!extractedEmail) {
+        console.log('🚫 No email found in resume - cannot proceed with application');
+        toast({
+          title: "Email Required",
+          description: "No email address found in your resume. Please include your email address in the resume.",
+          variant: "destructive",
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      console.log('✅ Email validation passed, using extracted email:', extractedEmail);
+
+      // Extract name from resume text (simple extraction)
+      const nameRegex = /(?:name|full name)[\s:]*([^\n\r]+)/i;
+      const nameMatch = resumeText.match(nameRegex);
+      let extractedName = nameMatch ? nameMatch[1].trim() : 'Applicant';
+
+      // Try alternative name patterns if first pattern didn't work
+      if (extractedName === 'Applicant') {
+        const altNameRegex = /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/m;
+        const altNameMatch = resumeText.match(altNameRegex);
+        if (altNameMatch) {
+          extractedName = altNameMatch[1].trim();
+        }
+      }
+
+      console.log('👤 Name extraction result:', extractedName);
+
+      // Extract phone number (optional)
+      const phoneRegex = /(\+?\d{1,3}[-.\s]?)?\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})/g;
+      const phoneMatches = resumeText.match(phoneRegex);
+      const extractedPhone = phoneMatches ? phoneMatches[0] : null;
+      console.log('📞 Phone extraction result:', extractedPhone || 'Not found');
+
       // Upload file to Supabase Storage
       const fileName = `${Date.now()}_${resumeFile.name}`;
+      console.log('☁️ Starting file upload to Supabase Storage...');
+      console.log('☁️ File name:', fileName);
+      console.log('☁️ File size:', resumeFile.size, 'bytes');
+
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('resumes')
         .upload(fileName, resumeFile, {
@@ -225,22 +289,31 @@ const ApplyJob = () => {
         });
 
       if (uploadError) {
-        console.error("Storage upload error:", uploadError);
+        console.error("❌ Storage upload error:", uploadError);
         throw new Error("Failed to upload resume file");
       }
+
+      console.log('✅ File uploaded successfully to Supabase Storage');
 
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('resumes')
         .getPublicUrl(fileName);
 
-      // Get form data
-      const formData = new FormData(e.target as HTMLFormElement);
-      const fullName = formData.get('fullName') as string;
-      const email = formData.get('email') as string;
-      const phone = formData.get('phone') as string;
+      console.log('🔗 Public URL generated:', publicUrl);
+
+      console.log('📝 Using extracted data from resume:');
+      console.log('📝 Full name (extracted):', extractedName);
+      console.log('📝 Email (extracted):', extractedEmail);
+      console.log('📝 Phone (extracted):', extractedPhone);
+
+      // Use extracted data instead of form data
+      const fullName = extractedName;
+      const email = extractedEmail;
+      const phone = extractedPhone || '';
 
       // Parse resume and save candidate using edge function (for AI processing)
+      console.log('🤖 Invoking parse-resume edge function...');
       const { data: candidateData, error: parseError } = await supabase.functions.invoke(
         "parse-resume",
         {
@@ -257,13 +330,21 @@ const ApplyJob = () => {
         }
       );
 
-      if (parseError) throw parseError;
+      if (parseError) {
+        console.error('❌ Parse-resume function error:', parseError);
+        throw parseError;
+      }
+
+      console.log('✅ Resume parsing completed, candidate data:', candidateData);
 
       // Send confirmation email via local Node.js server
+      console.log('📧 Starting email sending process...');
+      console.log('📧 Email recipient:', email);
+      console.log('📧 Interview link will be generated for candidate ID:', candidateData.candidate?.id || candidateData.id);
       try {
-        console.log('Sending email via local server to:', email);
         const frontendUrl = import.meta.env.VITE_FRONTEND_URL || window.location.origin;
         const interviewLink = `${frontendUrl}/interview-quiz/${jobId}/${candidateData.candidate?.id || candidateData.id}`;
+        console.log('📧 Interview link generated:', interviewLink);
 
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
         const emailResponse = await fetch(`${apiBaseUrl}/send-email`, {
@@ -742,19 +823,22 @@ const ApplyJob = () => {
           }),
         });
 
+        console.log('📧 Email API call completed');
         if (!emailResponse.ok) {
           const errorData = await emailResponse.json();
-          console.error('Local server error:', errorData);
+          console.error('❌ Local server error:', errorData);
           setEmailSent(false);
         } else {
           const responseData = await emailResponse.json();
-          console.log('Email sent successfully via local server:', responseData);
+          console.log('✅ Email sent successfully via local server:', responseData);
           setEmailSent(true);
         }
       } catch (emailError) {
-        console.error('Email error:', emailError);
+        console.error('❌ Email error:', emailError);
         setEmailSent(false);
       }
+
+      console.log('🎉 Application submission completed successfully');
 
       // Check if email was sent successfully
       setEmailSent(true);
@@ -879,38 +963,21 @@ const ApplyJob = () => {
             <CardDescription>Fill out the form below to submit your application</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="fullName">Full Name *</Label>
-                <Input
-                  id="fullName"
-                  name="fullName"
-                  required
-                  placeholder="Enter your full name"
-                  className="bg-background border-input"
-                />
+            <div className="space-y-4">
+              <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <div className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <h3 className="font-semibold">Resume-Based Application</h3>
+                </div>
+                <p className="text-sm text-blue-700 dark:text-blue-300 mt-2">
+                  Your application will be processed using information extracted from your resume.
+                  Please ensure your resume contains your full name, email address, and contact details.
+                </p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email *</Label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  required
-                  placeholder="Enter your email address"
-                  className="bg-background border-input"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number</Label>
-                <Input
-                  id="phone"
-                  name="phone"
-                  type="tel"
-                  placeholder="Enter your phone number"
-                  className="bg-background border-input"
-                />
-              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="resume">Resume * (PDF or Word document)</Label>
 
@@ -1021,8 +1088,7 @@ const ApplyJob = () => {
                   </div>
                 )}
               </div>
-
-            </form>
+              </form>
           </CardContent>
         </Card>
       </div>
