@@ -222,34 +222,28 @@ const Profile = () => {
     try {
       setLoadingJobs(true);
 
-      // Fetch from MongoDB instead of Supabase
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002';
-      const response = await fetch(`${apiBaseUrl}/candidate-applications/${encodeURIComponent(email)}`);
+      const { data: candidates, error } = await supabase
+        .from("candidates")
+        .select(`
+          id,
+          full_name,
+          email,
+          created_at,
+          status,
+          jobs (
+            id,
+            position,
+            department,
+            status,
+            closing_date
+          )
+        `)
+        .eq("email", email)
+        .order("created_at", { ascending: false });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      if (error) throw error;
 
-      const data = await response.json();
-
-      if (data.success && data.applications) {
-        // Transform MongoDB data to match the expected format
-        const transformedApplications = data.applications.map(app => ({
-          id: app.jobId, // Use jobId as unique identifier
-          jobs: {
-            position: app.position,
-            department: app.department,
-            status: app.status || 'active',
-            closing_date: app.closingDate
-          },
-          status: app.status || 'applied',
-          created_at: app.appliedDate
-        }));
-
-        setAppliedJobs(transformedApplications);
-      } else {
-        setAppliedJobs([]);
-      }
+      setAppliedJobs(candidates || []);
     } catch (error) {
       console.error("Error loading applied jobs:", error);
       toast({
