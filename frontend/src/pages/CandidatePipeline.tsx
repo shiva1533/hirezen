@@ -254,18 +254,18 @@ const CandidatePipeline = () => {
       <div className="flex flex-1">
         <Sidebar />
         <main className="ml-0 lg:ml-56 flex-1">
-          {/* Breadcrumb Navigation */}
-          <div className="border-b border-border bg-card/50 px-8 py-3">
+          {/* Sticky Pipeline Navigation */}
+          <div className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 px-8 py-4">
             <nav className="flex items-center gap-2 text-sm">
               <div className="flex items-center gap-1">
-                <span className="text-muted-foreground">Recruitment Pipeline</span>
+                <span className="text-muted-foreground font-medium">Recruitment Pipeline</span>
                 <ChevronRight className="h-3 w-3 text-muted-foreground" />
                 <div className="flex items-center gap-3 flex-wrap">
                   {PIPELINE_ROUTES.map((stage, index) => (
                     <div key={stage.route} className="flex items-center gap-2">
                       <Button
                         variant="link"
-                        className="h-auto p-0 text-muted-foreground hover:text-foreground"
+                        className="h-auto p-0 text-muted-foreground hover:text-foreground hover:bg-primary/5 rounded px-2 py-1 transition-colors"
                         onClick={() => navigate(stage.route)}
                       >
                         <span className="mr-1">{stage.icon}</span>
