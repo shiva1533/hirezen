@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload, User, Lock, Mail } from "lucide-react";
+import { Loader2, Upload, User, Lock, Mail, Briefcase } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
 const Profile = () => {
@@ -26,6 +27,10 @@ const Profile = () => {
   const [email, setEmail] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
 
+  // Job applications data
+  const [appliedJobs, setAppliedJobs] = useState<any[]>([]);
+  const [loadingJobs, setLoadingJobs] = useState(false);
+
   // Password change
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -34,6 +39,12 @@ const Profile = () => {
   useEffect(() => {
     checkUser();
   }, []);
+
+  useEffect(() => {
+    if (email) {
+      loadAppliedJobs();
+    }
+  }, [email]);
 
   const checkUser = async () => {
     try {
@@ -199,6 +210,46 @@ const Profile = () => {
     }
   };
 
+  const loadAppliedJobs = async () => {
+    if (!email) return;
+
+    try {
+      setLoadingJobs(true);
+
+      const { data: candidates, error } = await supabase
+        .from("candidates")
+        .select(`
+          id,
+          full_name,
+          email,
+          created_at,
+          status,
+          jobs (
+            id,
+            position,
+            department,
+            status,
+            closing_date
+          )
+        `)
+        .eq("email", email)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      setAppliedJobs(candidates || []);
+    } catch (error) {
+      console.error("Error loading applied jobs:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load job applications",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingJobs(false);
+    }
+  };
+
   const getInitials = (name: string) => {
     return name
       .split(" ")
@@ -206,6 +257,23 @@ const Profile = () => {
       .join("")
       .toUpperCase()
       .slice(0, 2);
+  };
+
+  const getStatusColor = (status: string | null) => {
+    switch (status) {
+      case "applied":
+        return "bg-blue-100 text-blue-800";
+      case "screening":
+        return "bg-yellow-100 text-yellow-800";
+      case "interviewing":
+        return "bg-purple-100 text-purple-800";
+      case "offered":
+        return "bg-green-100 text-green-800";
+      case "rejected":
+        return "bg-red-100 text-red-800";
+      default:
+        return "bg-gray-100 text-gray-800";
+    }
   };
 
   if (loading) {
@@ -336,6 +404,66 @@ const Profile = () => {
                   "Save Changes"
                 )}
               </Button>
+            </CardContent>
+          </Card>
+
+          {/* Job Applications Section */}
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Briefcase className="h-5 w-5" />
+                Job Applications
+              </CardTitle>
+              <CardDescription>
+                Track your job applications and current status
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loadingJobs ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  <span className="ml-2">Loading applications...</span>
+                </div>
+              ) : appliedJobs.length === 0 ? (
+                <div className="text-center py-8">
+                  <Briefcase className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">No job applications found</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Apply to jobs to see your application history here
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {appliedJobs.map((candidate) => (
+                    <div key={candidate.id} className="border rounded-lg p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-lg">
+                            {candidate.jobs?.position || "Unknown Position"}
+                          </h3>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {candidate.jobs?.department || "General"}
+                          </p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <Badge className={getStatusColor(candidate.status)}>
+                              {candidate.status || "applied"}
+                            </Badge>
+                            <span className="text-sm text-muted-foreground">
+                              Applied on {new Date(candidate.created_at).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+                        {candidate.jobs?.closing_date && (
+                          <div className="text-right text-sm text-muted-foreground">
+                            <p>Deadline</p>
+                            <p>{new Date(candidate.jobs.closing_date).toLocaleDateString()}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
